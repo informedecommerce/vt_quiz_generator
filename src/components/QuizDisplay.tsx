@@ -13,17 +13,17 @@ interface QuizDisplayProps {
 
 export default function QuizDisplay({ quiz, onBack }: QuizDisplayProps) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [textAnswers, setTextAnswers] = useState<Record<string, string>>({});
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
   const [isCompleted, setIsCompleted] = useState(false);
   const [score, setScore] = useState<QuizScoreSummary | null>(null);
 
   const currentQuestion = quiz.questions[currentQuestionIndex];
   const isLastQuestion = currentQuestionIndex === quiz.questions.length - 1;
 
-  const handleTextAnswerChange = (questionId: string, answer: string) => {
-    setTextAnswers(prev => ({
+  const handleAnswerSelect = (questionId: string, optionId: string) => {
+    setSelectedAnswers(prev => ({
       ...prev,
-      [questionId]: answer
+      [questionId]: optionId
     }));
   };
 
@@ -46,10 +46,8 @@ export default function QuizDisplay({ quiz, onBack }: QuizDisplayProps) {
 
     quiz.questions.forEach(question => {
       totalPoints += question.points;
-      const answer = textAnswers[question.id];
-      // For text-based answers, we'll give points for any non-empty answer
-      // In a real implementation, you might want to use AI to grade the answers
-      if (answer && answer.trim().length > 0) {
+      const selectedAnswer = selectedAnswers[question.id];
+      if (selectedAnswer === question.correctOptionId) {
         earnedPoints += question.points;
       }
     });
@@ -66,7 +64,7 @@ export default function QuizDisplay({ quiz, onBack }: QuizDisplayProps) {
 
   const handleRestart = () => {
     setCurrentQuestionIndex(0);
-    setTextAnswers({});
+    setSelectedAnswers({});
     setIsCompleted(false);
     setScore(null);
   };
@@ -115,11 +113,15 @@ export default function QuizDisplay({ quiz, onBack }: QuizDisplayProps) {
       doc.text(splitText, margin, yPosition);
       yPosition += splitText.length * lineHeight + 5;
 
-      // Answer space
+      // Options
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      doc.text('Answer: _________________________________________________', margin, yPosition);
-      yPosition += 15;
+      question.options.forEach((option, optionIndex) => {
+        const optionText = `${String.fromCharCode(97 + optionIndex)}. ${option.text}`;
+        const splitOptionText = doc.splitTextToSize(optionText, 160);
+        doc.text(splitOptionText, margin + 10, yPosition);
+        yPosition += splitOptionText.length * lineHeight;
+      });
 
       yPosition += 8;
     });
@@ -137,7 +139,8 @@ export default function QuizDisplay({ quiz, onBack }: QuizDisplayProps) {
     doc.setFont('helvetica', 'normal');
 
     quiz.questions.forEach((question, index) => {
-      const answerText = `${index + 1}. [Sample answer or key points for grading]`;
+      const correctOption = question.options.find(opt => opt.id === question.correctOptionId);
+      const answerText = `${index + 1}. ${String.fromCharCode(97 + question.options.findIndex(opt => opt.id === question.correctOptionId))}. ${correctOption?.text}`;
       
       const splitAnswerText = doc.splitTextToSize(answerText, 170);
       doc.text(splitAnswerText, margin, yPosition);
@@ -231,21 +234,36 @@ export default function QuizDisplay({ quiz, onBack }: QuizDisplayProps) {
             {currentQuestion.prompt}
           </h3>
           
-          {/* Text Answer Input */}
           <div className="space-y-3">
-            <label className="block text-sm font-medium text-gray-700">
-              Your Answer:
-            </label>
-            <textarea
-              value={textAnswers[currentQuestion.id] || ''}
-              onChange={(e) => handleTextAnswerChange(currentQuestion.id, e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900 bg-white resize-none"
-              rows={4}
-              placeholder="Type your answer here..."
-            />
-            <p className="text-sm text-gray-500">
-              Points: {currentQuestion.points}
-            </p>
+            {currentQuestion.options.map((option) => (
+              <label
+                key={option.id}
+                className={`flex items-center p-4 border rounded-lg cursor-pointer transition-colors ${
+                  selectedAnswers[currentQuestion.id] === option.id
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name={`question-${currentQuestion.id}`}
+                  value={option.id}
+                  checked={selectedAnswers[currentQuestion.id] === option.id}
+                  onChange={() => handleAnswerSelect(currentQuestion.id, option.id)}
+                  className="sr-only"
+                />
+                <div className={`w-4 h-4 rounded-full border-2 mr-3 ${
+                  selectedAnswers[currentQuestion.id] === option.id
+                    ? 'border-blue-500 bg-blue-500'
+                    : 'border-gray-300'
+                }`}>
+                  {selectedAnswers[currentQuestion.id] === option.id && (
+                    <div className="w-2 h-2 bg-white rounded-full m-0.5" />
+                  )}
+                </div>
+                <span className="text-gray-900">{option.text}</span>
+              </label>
+            ))}
           </div>
         </div>
 
@@ -261,7 +279,7 @@ export default function QuizDisplay({ quiz, onBack }: QuizDisplayProps) {
           
           <Button
             onClick={handleNext}
-            disabled={!textAnswers[currentQuestion.id] || textAnswers[currentQuestion.id].trim().length === 0}
+            disabled={!selectedAnswers[currentQuestion.id]}
           >
             {isLastQuestion ? 'Finish Quiz' : 'Next'}
           </Button>

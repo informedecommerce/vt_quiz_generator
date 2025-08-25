@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { QuizGenerationRequest, QuizPayload, QuizQuestion } from '@/types/quiz';
+import { QuizGenerationRequest, QuizPayload, QuizQuestion, QuizOption } from '@/types/quiz';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -56,143 +56,89 @@ async function generateQuizWithAI(request: QuizGenerationRequest): Promise<QuizQ
     }
   }
 
+  let prompt = `Generate ${numQuestions} multiple-choice questions for a quiz with the following specifications:
+
+Subject: ${subject}
+Grade Level: ${grade}
+Focus Area: ${focusArea}
+Difficulty: ${difficulty}
+
+Requirements:
+- Each question should have exactly 4 options (A, B, C, D)
+- Only one option should be correct
+- Questions should be specific and practical (e.g., "What is 4+3?" not "What is the main topic of addition?")
+- Questions should be appropriate for the specified difficulty level and grade
+- Each question is worth 1 point
+- Make questions engaging and educational
+- Randomly distribute correct answers among all choices (A,B,C,D)
+- Avoid "All/None of the above" options
+- Use grade-appropriate language and concepts
+
+Please format your response as a JSON array with the following structure:
+[
+  {
+    "prompt": "Specific question here?",
+    "options": [
+      {"id": "a", "text": "Option A text"},
+      {"id": "b", "text": "Option B text"},
+      {"id": "c", "text": "Option C text"},
+      {"id": "d", "text": "Option D text"}
+    ],
+    "correctOptionId": "a"
+  }
+]`;
+
+  // If file upload mode, include file content analysis
+  if (request.mode === 'upload') {
+    prompt = `Analyze the uploaded content and generate ${numQuestions} multiple-choice questions based on the material.
+
+File: ${request.fileName}
+Grade Level: ${grade}
+Difficulty: ${difficulty}
+
+Requirements:
+- Each question should have exactly 4 options (A, B, C, D)
+- Only one option should be correct
+- Questions should be based on the content in the uploaded file
+- Questions should be specific and practical
+- Questions should be appropriate for the specified difficulty level and grade
+- Each question is worth 1 point
+- Make questions engaging and educational
+- Randomly distribute correct answers among all choices (A,B,C,D)
+- Avoid "All/None of the above" options
+- Use grade-appropriate language and concepts
+
+Please format your response as a JSON array with the following structure:
+[
+  {
+    "prompt": "Specific question here?",
+    "options": [
+      {"id": "a", "text": "Option A text"},
+      {"id": "b", "text": "Option B text"},
+      {"id": "c", "text": "Option C text"},
+      {"id": "d", "text": "Option D text"}
+    ],
+    "correctOptionId": "a"
+  }
+]`;
+  }
+
   try {
-    let response;
-
-    if (request.mode === 'manual') {
-      // Option 1: Manual inputs
-      response = await openai.responses.create({
-        model: "gpt-4.1-mini",
-        input: [
-          {
-            "role": "system",
-            "content": [
-              {
-                "type": "input_text",
-                "text": `You are a quiz creator tool for teachers. The quiz you generate will be used to test students on particular material. Please make a quiz that is appropriate for the following use case
-
-subject: ${subject}
-grade: ${grade}
-number of problems: ${numQuestions}
-topic of focus: ${focusArea}
-difficulty level: ${difficulty}
-
-Return the JSON schema only`
-              }
-            ]
-          }
-        ],
-        text: {
-          "format": {
-            "type": "json_schema",
-            "name": "quiz_questions_array",
-            "strict": true,
-            "schema": {
-              "type": "object",
-              "properties": {
-                "questions": {
-                  "type": "array",
-                  "description": "An array of quiz questions.",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "question": {
-                        "type": "string",
-                        "description": "The quiz question to be answered."
-                      }
-                    },
-                    "required": [
-                      "question"
-                    ],
-                    "additionalProperties": false
-                  }
-                }
-              },
-              "required": [
-                "questions"
-              ],
-              "additionalProperties": false
-            }
-          }
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert educational content creator. Generate high-quality, engaging multiple-choice questions that test understanding and knowledge. Make questions specific and practical, not general topic questions."
         },
-        reasoning: {},
-        tools: [],
-        temperature: 1,
-        max_output_tokens: 2048,
-        top_p: 1,
-        store: true
-      });
-    } else {
-      // Option 2: File upload
-      response = await openai.responses.create({
-        model: "gpt-4.1-mini",
-        input: [
-          {
-            "role": "system",
-            "content": [
-              {
-                "type": "input_text",
-                "text": `You are a quiz creator tool for teachers. The quiz you generate will be used to test students on particular material. Please make a quiz that is based off of the attached lesson plan. Also ensure the quiz meets the following guidelines:
-
-Number of problems: ${numQuestions}
-Difficulty Level: ${difficulty}
-
-Return the JSON schema only`
-              }
-            ]
-          },
-          {
-            "role": "user",
-            "content": [
-              {
-                "type": "input_file",
-                "filename": request.fileName,
-                "file_data": request.fileBase64
-              }
-            ]
-          }
-        ],
-        text: {
-          "format": {
-            "type": "json_schema",
-            "name": "quiz_questions_array",
-            "strict": true,
-            "schema": {
-              "type": "object",
-              "properties": {
-                "questions": {
-                  "type": "array",
-                  "description": "An array of quiz questions.",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "question": {
-                        "type": "string",
-                        "description": "The quiz question to be answered."
-                      }
-                    },
-                    "required": [
-                      "question"
-                    ],
-                    "additionalProperties": false
-                  }
-                }
-              },
-              "required": [
-                "questions"
-              ],
-              "additionalProperties": false
-            }
-          }
-        },
-        reasoning: {},
-        tools: [],
-        temperature: 1,
-        max_output_tokens: 2048,
-        top_p: 1,
-        store: true
-      });
-    }
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000
+    });
 
     const content = response.choices[0]?.message?.content;
     
@@ -202,15 +148,14 @@ Return the JSON schema only`
 
     // Try to parse JSON response
     try {
-      const parsedResponse = JSON.parse(content);
-      const questions = parsedResponse.questions || [];
+      const parsedQuestions = JSON.parse(content);
       
-      // Format questions to match our QuizQuestion interface
-      const formattedQuestions: QuizQuestion[] = questions.map((q: any, index: number) => ({
+      // Validate and format the questions
+      const formattedQuestions: QuizQuestion[] = parsedQuestions.map((q: any, index: number) => ({
         id: `q${index + 1}`,
-        prompt: q.question,
-        options: [], // No options for text-based answers
-        correctOptionId: '', // No correct option for text-based answers
+        prompt: q.prompt,
+        options: q.options,
+        correctOptionId: q.correctOptionId,
         points: 1
       }));
 
@@ -240,21 +185,68 @@ function generateMockQuestions(request: QuizGenerationRequest): QuizQuestion[] {
   const subject = request.mode === 'manual' ? request.subject : 'General Knowledge';
   const focusArea = request.mode === 'manual' ? request.focusArea : 'Basic Concepts';
   
+  // Generate more specific mock questions based on the focus area
   const questionTemplates = [
-    `What is the main topic of ${focusArea} in ${subject}?`,
-    `Which of the following best describes ${focusArea}?`,
-    `When studying ${focusArea}, what is the most important first step?`,
-    `What is the primary goal of learning about ${focusArea}?`,
-    `Which approach is best for mastering ${focusArea}?`
+    {
+      prompt: `What is 5 + 3?`,
+      options: [
+        { id: 'a', text: '6' },
+        { id: 'b', text: '7' },
+        { id: 'c', text: '8' },
+        { id: 'd', text: '9' }
+      ],
+      correctOptionId: 'c'
+    },
+    {
+      prompt: `What is 12 - 4?`,
+      options: [
+        { id: 'a', text: '6' },
+        { id: 'b', text: '7' },
+        { id: 'c', text: '8' },
+        { id: 'd', text: '9' }
+      ],
+      correctOptionId: 'c'
+    },
+    {
+      prompt: `What is 3 × 4?`,
+      options: [
+        { id: 'a', text: '10' },
+        { id: 'b', text: '11' },
+        { id: 'c', text: '12' },
+        { id: 'd', text: '13' }
+      ],
+      correctOptionId: 'c'
+    },
+    {
+      prompt: `What is 15 ÷ 3?`,
+      options: [
+        { id: 'a', text: '3' },
+        { id: 'b', text: '4' },
+        { id: 'c', text: '5' },
+        { id: 'd', text: '6' }
+      ],
+      correctOptionId: 'c'
+    },
+    {
+      prompt: `What is 7 + 8?`,
+      options: [
+        { id: 'a', text: '13' },
+        { id: 'b', text: '14' },
+        { id: 'c', text: '15' },
+        { id: 'd', text: '16' }
+      ],
+      correctOptionId: 'c'
+    }
   ];
 
   // Generate the requested number of questions
   for (let i = 0; i < Math.min(request.numProblems, questionTemplates.length); i++) {
+    const template = questionTemplates[i];
     questions.push({
       id: `q${i + 1}`,
-      prompt: questionTemplates[i],
-      options: [], // No options for text-based answers
-      correctOptionId: '', // No correct option for text-based answers
+      prompt: template.prompt,
+      options: template.options,
+      correctOptionId: template.correctOptionId,
       points: 1
     });
   }
@@ -263,9 +255,14 @@ function generateMockQuestions(request: QuizGenerationRequest): QuizQuestion[] {
   for (let i = questionTemplates.length; i < request.numProblems; i++) {
     questions.push({
       id: `q${i + 1}`,
-      prompt: `Question ${i + 1}: What is an important aspect of ${focusArea}?`,
-      options: [], // No options for text-based answers
-      correctOptionId: '', // No correct option for text-based answers
+      prompt: `What is ${i + 1} + ${i + 2}?`,
+      options: [
+        { id: 'a', text: `${i + 1}` },
+        { id: 'b', text: `${i + 2}` },
+        { id: 'c', text: `${i + i + 3}` },
+        { id: 'd', text: `${i + i + 4}` }
+      ],
+      correctOptionId: 'c',
       points: 1
     });
   }
