@@ -40,6 +40,20 @@ export default function QuizGenerator({ onQuizGenerated }: QuizGeneratorProps) {
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      // Validate file type
+      const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+      if (!allowedTypes.includes(file.type)) {
+        alert('Please upload a PDF, PNG, or JPG/JPEG file.');
+        return;
+      }
+      
+      // Validate file size (10MB limit)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSize) {
+        alert('File size must be less than 10MB.');
+        return;
+      }
+      
       setUploadedFile(file);
     }
   };
@@ -76,16 +90,16 @@ export default function QuizGenerator({ onQuizGenerated }: QuizGeneratorProps) {
         };
       }
 
-      // Simulate progress updates
+      // Simulate ~5 seconds of progress updates
       const progressInterval = setInterval(() => {
         setProgress((prev) => {
           if (prev >= 90) {
             clearInterval(progressInterval);
             return 90;
           }
-          return prev + 10;
+          return prev + 2;
         });
-      }, 500);
+      }, 100);
 
       // TODO: Replace with actual API call
       const response = await fetch('/api/generate-quiz', {
@@ -151,9 +165,18 @@ export default function QuizGenerator({ onQuizGenerated }: QuizGeneratorProps) {
 
         {isGenerating && (
           <div className="mb-6">
+            <div className="text-center mb-6">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Building your quiz...
+              </h3>
+              <p className="text-sm text-gray-600">
+                Our AI is creating engaging questions just for you
+              </p>
+            </div>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-sm font-medium text-gray-700">
-                Generating quiz...
+                Progress
               </span>
               <span className="text-sm text-gray-500">{progress}%</span>
             </div>
@@ -258,6 +281,7 @@ export default function QuizGenerator({ onQuizGenerated }: QuizGeneratorProps) {
                     type="file"
                     accept=".pdf,.png,.jpg,.jpeg"
                     onChange={handleFileUpload}
+
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900 bg-white"
                   />
                   {uploadedFile && (
@@ -305,7 +329,14 @@ export default function QuizGenerator({ onQuizGenerated }: QuizGeneratorProps) {
                 disabled={isGenerating}
                 className="w-full"
               >
-                {isGenerating ? 'Generating...' : 'Generate Quiz'}
+                {isGenerating ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Building Quiz...
+                  </div>
+                ) : (
+                  'Generate Quiz'
+                )}
               </Button>
             </Form>
           )}

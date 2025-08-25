@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { QuizPayload, QuizQuestion, QuizScoreSummary } from '@/types/quiz';
+import jsPDF from 'jspdf';
 
 interface QuizDisplayProps {
   quiz: QuizPayload;
@@ -68,6 +69,89 @@ export default function QuizDisplay({ quiz, onBack }: QuizDisplayProps) {
     setScore(null);
   };
 
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    let yPosition = 20;
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 20;
+    const lineHeight = 7;
+
+    // Title
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    const title = `${quiz.subject || 'Quiz'} - ${quiz.difficulty.charAt(0).toUpperCase() + quiz.difficulty.slice(1)}`;
+    doc.text(title, margin, yPosition);
+    yPosition += 15;
+
+    // Quiz info
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total Questions: ${quiz.questions.length}`, margin, yPosition);
+    yPosition += 8;
+    doc.text(`Total Points: ${quiz.totalPoints || quiz.questions.length}`, margin, yPosition);
+    yPosition += 15;
+
+    // Questions
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Questions:', margin, yPosition);
+    yPosition += 10;
+
+    quiz.questions.forEach((question, index) => {
+      // Check if we need a new page
+      if (yPosition > pageHeight - 60) {
+        doc.addPage();
+        yPosition = 20;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      const questionText = `${index + 1}. ${question.prompt}`;
+      
+      // Split long questions into multiple lines
+      const splitText = doc.splitTextToSize(questionText, 170);
+      doc.text(splitText, margin, yPosition);
+      yPosition += splitText.length * lineHeight + 5;
+
+      // Options
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      question.options.forEach((option, optionIndex) => {
+        const optionText = `${String.fromCharCode(97 + optionIndex)}. ${option.text}`;
+        const splitOptionText = doc.splitTextToSize(optionText, 160);
+        doc.text(splitOptionText, margin + 10, yPosition);
+        yPosition += splitOptionText.length * lineHeight;
+      });
+
+      yPosition += 8;
+    });
+
+    // Add answer key on a new page
+    doc.addPage();
+    yPosition = 20;
+
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Answer Key', margin, yPosition);
+    yPosition += 15;
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+
+    quiz.questions.forEach((question, index) => {
+      const correctOption = question.options.find(opt => opt.id === question.correctOptionId);
+      const answerText = `${index + 1}. ${String.fromCharCode(97 + question.options.findIndex(opt => opt.id === question.correctOptionId))}. ${correctOption?.text}`;
+      
+      const splitAnswerText = doc.splitTextToSize(answerText, 170);
+      doc.text(splitAnswerText, margin, yPosition);
+      yPosition += splitAnswerText.length * lineHeight + 5;
+    });
+
+    // Save the PDF
+    const fileName = `${quiz.subject || 'quiz'}_${quiz.difficulty}_${new Date().toISOString().split('T')[0]}.pdf`;
+    doc.save(fileName);
+  };
+
   if (isCompleted && score) {
     return (
       <div className="space-y-6">
@@ -87,7 +171,21 @@ export default function QuizDisplay({ quiz, onBack }: QuizDisplayProps) {
               </div>
             </div>
 
-            <div className="space-y-2">
+            {/* Feedback message based on score */}
+            <div className="mb-6">
+              <p className="text-lg text-gray-700">
+                {score.percentage >= 90 ? 'Excellent work! You have mastered this material.' :
+                 score.percentage >= 80 ? 'Great job! You have a solid understanding.' :
+                 score.percentage >= 70 ? 'Good effort! Review the material to improve.' :
+                 score.percentage >= 60 ? 'Keep practicing! Focus on the areas you missed.' :
+                 'Don\'t give up! Review the material and try again.'}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <Button onClick={exportToPDF} className="w-full bg-green-600 hover:bg-green-700">
+                Download PDF
+              </Button>
               <Button onClick={handleRestart} className="w-full">
                 Take Quiz Again
               </Button>

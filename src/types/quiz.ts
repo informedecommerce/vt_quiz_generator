@@ -41,6 +41,7 @@ export interface QuizPayload {
   grade?: string;
   difficulty: Difficulty;
   questions: QuizQuestion[];
+  totalPoints: number;
   createdAtISO: string;
 }
 
