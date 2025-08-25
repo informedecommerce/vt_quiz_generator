@@ -38,23 +38,40 @@ export async function POST(request: NextRequest) {
 async function generateQuizWithAI(request: QuizGenerationRequest): Promise<QuizQuestion[]> {
   const subject = request.mode === 'manual' ? request.subject : 'General Knowledge';
   const focusArea = request.mode === 'manual' ? request.focusArea : 'Basic Concepts';
-  const grade = request.mode === 'manual' ? request.grade : '';
+  const grade = request.mode === 'manual' ? request.grade : '5th grade';
   const difficulty = request.difficulty;
   const numQuestions = request.numProblems;
+
+  // Content moderation check
+  const forbiddenTopics = [
+    'serial killers', 'murderers', 'violence', 'sexual', 'pornographic', 'hate speech',
+    'extremist', 'graphic violence', 'gore', 'self-harm', 'lgbtia+', 'woke', 'wokeness',
+    'adult themes', 'stripping', 'prostitution', 'drugs', 'rape'
+  ];
+
+  const inputText = `${subject} ${focusArea}`.toLowerCase();
+  for (const topic of forbiddenTopics) {
+    if (inputText.includes(topic)) {
+      throw new Error('I\'m sorry, but I cannot generate a lesson plan on that topic. Please try something else');
+    }
+  }
 
   let prompt = `Generate ${numQuestions} multiple-choice questions for a quiz with the following specifications:
 
 Subject: ${subject}
-${grade ? `Grade Level: ${grade}` : ''}
+Grade Level: ${grade}
 Focus Area: ${focusArea}
 Difficulty: ${difficulty}
 
 Requirements:
 - Each question should have exactly 4 options (A, B, C, D)
 - Only one option should be correct
-- Questions should be appropriate for the specified difficulty level
+- Questions should be appropriate for the specified difficulty level and grade
 - Each question is worth 1 point
 - Make questions engaging and educational
+- Randomly distribute correct answers among all choices (A,B,C,D)
+- Avoid "All/None of the above" options
+- Use grade-appropriate language and concepts
 
 Please format your response as a JSON array with the following structure:
 [
@@ -75,15 +92,19 @@ Please format your response as a JSON array with the following structure:
     prompt = `Analyze the uploaded content and generate ${numQuestions} multiple-choice questions based on the material.
 
 File: ${request.fileName}
+Grade Level: ${grade}
 Difficulty: ${difficulty}
 
 Requirements:
 - Each question should have exactly 4 options (A, B, C, D)
 - Only one option should be correct
 - Questions should be based on the content in the uploaded file
-- Questions should be appropriate for the specified difficulty level
+- Questions should be appropriate for the specified difficulty level and grade
 - Each question is worth 1 point
 - Make questions engaging and educational
+- Randomly distribute correct answers among all choices (A,B,C,D)
+- Avoid "All/None of the above" options
+- Use grade-appropriate language and concepts
 
 Please format your response as a JSON array with the following structure:
 [
@@ -102,11 +123,51 @@ Please format your response as a JSON array with the following structure:
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini", // More cost-effective model
       messages: [
         {
           role: "system",
-          content: "You are an expert educational content creator. Generate high-quality, engaging multiple-choice questions that test understanding and knowledge."
+          content: `You are an AI Practice Problem Generator for an online tutoring company. You must adhere to all instructions below.
+
+# Content Requirements & Constraints
+
+## Input Validation and Prioritization
+* Primary Source of Truth: The subject and (if provided) topic are always the main focus
+* If conflicting inputs detected:
+  * Prioritize subject and topic
+  * Adapt to match subject/topic
+  * DO NOT refuse output if standards/objectives mismatch
+  * Subject ALONE is sufficient to generate output
+
+## Content Moderation (HIGHEST PRIORITY)
+- Keep K-12 topics K–12 appropriate and other age appropriate
+- Keep political or sensitive topics neutral
+- Avoid politically charged and socially progressive language
+- Not include ideological framing, inclusive rewordings, wokeness, or language that assumes or promotes social activism
+
+## Problem Requirements
+* All problems must:
+  * Be clearly stated
+  * Have unique solutions
+  * Be grade-appropriate
+  * Align with topic
+* Multiple Choice Format:
+  * Ensure you randomly distribute correct answers among ALL the choices (A,B,C,D)
+  * The question should be clear and focused
+  * Answer options should include one correct choice and three plausible distractors
+  * Avoid "All/None of the above" unless specifically requested
+
+## Grade Level Guidelines
+* K-5: Simple vocabulary, visual descriptions, step-by-step instructions, concrete examples
+* 6-8: Grade-appropriate terms, mixed complexity, clear structure, real-world connections
+* 9-12: Academic vocabulary, complex concepts, advanced applications, detailed solutions
+
+## Quality Control Requirements
+* All content must be properly formatted
+* Clear instructions
+* Complete solutions
+* Proper difficulty scaling
+* Grade-appropriate language`
         },
         {
           role: "user",
@@ -146,6 +207,12 @@ Please format your response as a JSON array with the following structure:
 
   } catch (error) {
     console.error('OpenAI API error:', error);
+    
+    // Check if it's a content moderation error
+    if (error instanceof Error && error.message.includes('cannot generate a lesson plan on that topic')) {
+      throw error; // Re-throw content moderation errors
+    }
+    
     // Fallback to mock questions if OpenAI fails
     return generateMockQuestions(request);
   }
